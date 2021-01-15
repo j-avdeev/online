@@ -801,10 +801,11 @@ L.Control.JSDialogBuilder = L.Control.extend({
 				var title = builder._cleanText(item.text);
 
 				var tab = L.DomUtil.create('div', 'ui-tab ' + builder.options.cssClass, tabsContainer);
-				tab.id = data.tabs[tabIdx].name;
+				tab.id = data.tabs[tabIdx].name + '-tab-label';
 				tab.number = data.tabs[tabIdx].id - 1;
 
-				if (data.selected == data.tabs[tabIdx].id)
+				var isSelectedTab = data.selected == data.tabs[tabIdx].id;
+				if (isSelectedTab)
 					$(tab).addClass('selected');
 
 				var tabContext = data.tabs[tabIdx].context;
@@ -819,15 +820,17 @@ L.Control.JSDialogBuilder = L.Control.extend({
 				}
 
 				tabs[tabIdx] = tab;
-				tabIds[tabIdx] = tab.id;
+				tabIds[tabIdx] = data.tabs[tabIdx].name;
 
 				var label = L.DomUtil.create('span', 'ui-tab-content ' + builder.options.cssClass + ' unolabel', tab);
 				label.innerHTML = title;
 
 				var contentDiv = L.DomUtil.create('div', 'ui-content level-' + builder._currentDepth + ' ' + builder.options.cssClass, contentsContainer);
 				contentDiv.title = title;
+				contentDiv.id = data.tabs[tabIdx].name;
 
-				$(contentDiv).hide();
+				if (!isSelectedTab)
+					$(contentDiv).hide();
 				contentDivs[tabIdx] = contentDiv;
 			}
 
@@ -850,7 +853,18 @@ L.Control.JSDialogBuilder = L.Control.extend({
 			}
 		}
 
-		return true;
+		var tabId = 0;
+		for (var tabIdx = 0; tabIdx < data.children.length; tabIdx++) {
+			var tab = data.children[tabIdx];
+
+			if (tab.type !== 'tabpage')
+				continue;
+
+			builder.build(contentDivs[tabId], [tab], false, false);
+			tabId++;
+		}
+
+		return false;
 	},
 
 	_panelTabsHandler: function(parentContainer, data, builder) {
