@@ -224,11 +224,9 @@ L.Control.NotebookbarBuilder = L.Control.JSDialogBuilder.extend({
 					$('#fontnamecombobox').html(state);
 				window.LastSetiOSFontNameButtonFont = state;
 			} else {
-				$('#fontnamecombobox').val(state).trigger('change');
+				// refresh fonts list
+				this.map.createFontSelector('#fontnamecombobox');
 			}
-		} else if (commandName === '.uno:FontHeight') {
-			$('#fontsize').val(parseFloat(state)).trigger('change');
-			$('#fontsizecombobox').val(parseFloat(state)).trigger('change');
 		} else if (commandName === '.uno:StyleApply') {
 			$('#applystyle').val(state).trigger('change');
 		}
@@ -239,55 +237,6 @@ L.Control.NotebookbarBuilder = L.Control.JSDialogBuilder.extend({
 			else {
 				$('#Saveimg').removeClass('savemodified');
 			}
-		}
-	},
-
-	_setupComboboxSelectionHandler: function(combobox, id, builder) {
-		var items = builder.map['stateChangeHandler'];
-
-		if (id === 'fontnamecombobox') {
-			$(combobox).on('select2:select', function (e) {
-				var font = e.params.data.text;
-				builder.map.applyFont(font);
-				builder.map.focus();
-			});
-
-			var state = items.getItemValue('.uno:CharFontName');
-			$(combobox).val(state).trigger('change');
-		}
-		else if (id === 'fontsize' || id === 'fontsizecombobox') {
-			$(combobox).on('select2:select', function (e) {
-				builder.map.applyFontSize(parseFloat(e.params.data.text));
-				builder.map.focus();
-			});
-
-			state = items.getItemValue('.uno:FontHeight');
-			$(combobox).val(state).trigger('change');
-		}
-		else if (id === 'applystyle') {
-			$(combobox).on('select2:select', function (e) {
-				var style = e.target.value;
-				var docType = builder.map.getDocType();
-
-				if (style.startsWith('.uno:'))
-					builder.map.sendUnoCommand(style);
-				else if (docType === 'text')
-					builder.map.applyStyle(style, 'ParagraphStyles');
-				else if (docType === 'spreadsheet')
-					builder.map.applyStyle(style, 'CellStyles');
-				else if (docType === 'presentation' || docType === 'drawing')
-					builder.map.applyLayout(style);
-
-				builder.map.focus();
-			});
-
-			state = items.getItemValue('.uno:StyleApply');
-			$(combobox).val(state).trigger('change');
-		} else {
-			$(combobox).on('select2:select', function (e) {
-				var value = e.params.data.id + ';' + e.params.data.text;
-				builder.callback('combobox', 'selected', combobox, value, builder);
-			});
 		}
 	},
 
@@ -319,13 +268,26 @@ L.Control.NotebookbarBuilder = L.Control.JSDialogBuilder.extend({
 
 		var processedData = [];
 
+		var isFontSizeSelector = (data.id === 'fontsize' || data.id === 'fontsizecombobox');
+		var isFontSelector = (data.id === 'fontnamecombobox');
+
+		if (!data.entries || data.entries.length === 0) {
+			if (isFontSelector) {
+				builder.map.createFontSelector('#' + data.id);
+				return;
+			} else if (isFontSizeSelector) {
+				builder.map.createFontSizeSelector('#' + data.id);
+				return;
+			}
+		}
+
 		data.entries.forEach(function (value, index) {
 			var selected = data.selectedEntries.length &&
 				(parseInt(data.selectedEntries[0]) == index);
 			var id = index;
-			if (data.id === 'fontsize' || data.id === 'fontsizecombobox')
+			if (isFontSizeSelector)
 				id = parseFloat(value);
-			if (data.id === 'fontnamecombobox')
+			if (isFontSelector)
 				id = value;
 			processedData.push({id: id, text: value, selected: selected});
 		});
@@ -335,7 +297,10 @@ L.Control.NotebookbarBuilder = L.Control.JSDialogBuilder.extend({
 			placeholder: _(builder._cleanText(data.text))
 		});
 
-		builder._setupComboboxSelectionHandler(select, data.id, builder);
+		$(select).on('select2:select', function (e) {
+			var value = e.params.data.id + ';' + e.params.data.text;
+			builder.callback('combobox', 'selected', select, value, builder);
+		});
 
 		return false;
 	},
