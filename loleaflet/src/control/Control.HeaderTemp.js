@@ -18,8 +18,8 @@ L.Control.Header = L.Class.extend({
 		var fontSize = parseInt(L.DomUtil.getStyle(elem, 'font-size'));
 		var fontHeight = parseInt(L.DomUtil.getStyle(elem, 'line-height'));
 		var rate = fontHeight / fontSize;
-		var that = this;
 		this._font = {
+			_hdr: this,
 			_baseFontSize: fontSize * this.dpiScale,
 			_fontSizeRate: rate,
 			_fontFamily: fontFamily,
@@ -27,7 +27,7 @@ L.Control.Header = L.Class.extend({
 				// Limit zoomScale to 115%. At 120% the row ids at the bottom eat all
 				// horizontal margins and it looks ugly. Beyond 120% the row ids get
 				// clipped out visibly.
-				var zoomScale = that.getHeaderZoomScale(
+				var zoomScale = this._hdr.getHeaderZoomScale(
 					/* lowerBound */ 0.5, /* upperBound */ 1.15);
 
 				return Math.floor(this._baseFontSize * zoomScale) +
@@ -86,12 +86,10 @@ L.Control.Header = L.Class.extend({
 	},
 
 	select: function (entry, isCurrent) {
-		this.containerObject.setPenPosition(this);
 		this.drawHeaderEntry(entry, /*isOver=*/false, /*isHighlighted=*/true, isCurrent);
 	},
 
 	unselect: function (entry) {
-		this.containerObject.setPenPosition(this);
 		this.drawHeaderEntry(entry, /*isOver=*/false, /*isHighlighted=*/false, false);
 	},
 
@@ -124,7 +122,6 @@ L.Control.Header = L.Class.extend({
 		}
 
 		this._selection.start = this._selection.end = -1;
-		this.containerObject.requestReDraw();
 	},
 
 	// Sets the internal this._selection values accordingly, unselects the previous set of rows/cols and
@@ -175,26 +172,8 @@ L.Control.Header = L.Class.extend({
 
 		this._selection.start = itStart;
 		this._selection.end = itEnd;
-		this.containerObject.requestReDraw();
 	},
 
-	onLongPress: function () {
-		if (this._map.isPermissionEdit()) {
-			window.contextMenuWizard = true;
-			this._map.fire('mobilewizard', this._menuData);
-		}
-	},
-
-	_updateCanvas: function () {
-		if (this._headerInfo) {
-			this._headerInfo.update(this);
-			this.containerObject.requestReDraw();
-		}
-	},
-
-	_onClearSelection: function () {
-		this.clearSelection();
-	},
 
 	// Called whenever the cell cursor is in a cell corresponding to the cursorPos-th
 	// column/row.
@@ -222,7 +201,6 @@ L.Control.Header = L.Class.extend({
 				this.select(entry, true);
 		}
 		this._current = entry && !zeroSizeEntry ? entry.index : -1;
-		this.containerObject.requestReDraw();
 	},
 
 	optimalHeight: function(index) {
@@ -275,6 +253,50 @@ L.Control.Header = L.Class.extend({
 		var h = this._twipsToPixels(e.height);
 		var slim = h <= 1;
 		this.updateCurrent(y, slim);
+	},
+
+	fillRows: function (rows, rowGroups, converter, context) {
+		if (rows && rows.length < 2)
+			return;
+
+		// Reset state
+		this._current = -1;
+		this._selection.start = this._selection.end = -1;
+		this._mouseOverEntry = null;
+		if (!window.contextMenuWizard) {
+			this._lastMouseOverIndex = undefined;
+		}
+
+		var sheetGeometry = this._map._docLayer.sheetGeometry;
+
+		// setup conversion routine
+		this.converter = L.Util.bind(converter, context);
+
+		// create group array
+		this._groupLevels = rows ? parseInt(rows[0].groupLevels) :
+			sheetGeometry.getRowGroupLevels();
+		this._groups = this._groupLevels ? new Array(this._groupLevels) : null;
+
+		// collect group controls data
+		if (rowGroups !== undefined && this._groups) {
+			this._collectGroupsData(rowGroups);
+		}
+		else if (sheetGeometry) {
+			this._collectGroupsData(sheetGeometry.getRowGroupsDataInView());
+		}
+
+		if (this._groups) {
+			this.resize(this._computeOutlineWidth() + this._borderWidth + this._headerWidth);
+		}
+		else {
+			this.resize(this._headerWidth);
+		}
+
+		this.containerObject.requestReDraw();
+
+		if ($('.spreadsheet-header-rows').length > 0) {
+			$('.spreadsheet-header-rows').contextMenu(this._map.isPermissionEdit());
+		}
 	},
 
 	_selectRow: function(row, modifier) {
@@ -406,6 +428,50 @@ L.Control.Header = L.Class.extend({
 		this._map._docLayer.refreshViewData({x: this._map._getTopLeftPoint().x, y: 0, offset: {x: undefined, y: 0}});
 	},
 
+	fillColumns: function (columns, colGroups, converter, context) {
+		if (columns && columns.length < 2)
+			return;
+
+		// Reset state
+		this._current = -1;
+		this._selection.start = this._selection.end = -1;
+		this._mouseOverEntry = null;
+		if (!window.contextMenuWizard) {
+			this._lastMouseOverIndex = undefined;
+		}
+
+		var sheetGeometry = this._map._docLayer.sheetGeometry;
+
+		// setup conversion routine
+		this.converter = L.Util.bind(converter, context);
+
+		// create group array
+		this._groupLevels = columns ? parseInt(columns[0].groupLevels):
+			sheetGeometry.getColumnGroupLevels();
+		this._groups = this._groupLevels ? new Array(this._groupLevels) : null;
+
+		// collect group controls data
+		if (colGroups !== undefined && this._groups) {
+			this._collectGroupsData(colGroups);
+		}
+		else if (sheetGeometry) {
+			this._collectGroupsData(sheetGeometry.getColumnGroupsDataInView());
+		}
+
+		if (this._groups) {
+			this.resize(this._computeOutlineWidth() + this._borderWidth + this._headerHeight);
+		}
+		else {
+			this.resize(this._headerHeight);
+		}
+
+		this.containerObject.requestReDraw();
+
+		if ($('.spreadsheet-header-columns').length > 0) {
+			$('.spreadsheet-header-columns').contextMenu(this._map.isPermissionEdit());
+		}
+	},
+
 	_colIndexToAlpha: function(columnNumber) {
 		var offset = 'A'.charCodeAt();
 		var dividend = columnNumber;
@@ -493,7 +559,7 @@ L.Control.Header = L.Class.extend({
 		if (!this._headerInfo)
 			return false;
 
-		var position = this._headerInfo._isColumn ? point[0]: point[1];
+		var position = this._headerInfo._isCol ? point[0]: point[1];
 
 		var that = this;
 		var result = null;
@@ -514,20 +580,29 @@ L.Control.Header = L.Class.extend({
 	},
 
 	onMouseEnter: function () {
-		L.DomUtil.setStyle(this.containerObject.canvas, 'cursor', this._cursor);
-		this._bindContextMenu();
+
 	},
 
-	onMouseLeave: function (point) {
+	onMouseLeave: function (point, e) {
 		if (point === null) { // This means that the mouse pointer is outside the canvas.
-			if (this.containerObject.draggingSomething && this._dragEntry) { // Were we resizing a row / column before mouse left.
-				this.onDragEnd(this.containerObject.dragDistance);
+			if (this._overHeaderArea && this.containerObject.draggingSomething && this._dragEntry) { // Were we resizing a row / column before mouse left.
+				this._onDragEnd(this.containerObject.dragDistance);
 			}
 		}
+		if (this._hitOutline(point, e))
+			return;
+
+		this._onHeaderMouseOut(e);
+	},
+
+	_onHeaderMouseOut: function () {
+		if (!this._overHeaderArea)
+			return;
+		this._overHeaderArea = false;
+		this._unBindContextMenu();
 
 		if (this._mouseOverEntry) {
 			var mouseOverIsCurrent = (this._mouseOverEntry.index == this._current);
-			this.containerObject.setPenPosition(this);
 			this.drawHeaderEntry(this._mouseOverEntry, /*isOver: */ false, null, mouseOverIsCurrent);
 			this._mouseOverEntry = null;
 		}
@@ -540,29 +615,38 @@ L.Control.Header = L.Class.extend({
 	},
 
 	_bindContextMenu: function () {
-		this._unBindContextMenu();
 		var that = this;
-		$.contextMenu({
-			selector: '#document-canvas',
-			className: 'loleaflet-font',
-			zIndex: 10,
-			items: that._menuItem,
-			callback: function() {}
+		$(function() {
+			$.contextMenu({
+				selector: '#document-canvas',
+				className: 'loleaflet-font',
+				items: that._menuItem,
+				zIndex: 10
+			});
 		});
-		$('#document-canvas').contextMenu('update');
 	},
 
 	_unBindContextMenu: function () {
-		$.contextMenu('destroy', '#document-canvas');
+		$('#document-canvas').off('contextmenu');
 	},
 
 	onMouseMove: function (point, dragDistance) {
+		if (this._hitOutline(point)) { // There is no special event when mouse is over row || column groups. So we return.
+			this._onHeaderMouseOut();
+			return false;
+		}
+
 		if (!this.containerObject.draggingSomething) { // If we are not dragging anything.
+			if (!this._overHeaderArea) { // If mouse was over row || column groups previously, we set cursor to pointer again.
+				L.DomUtil.setStyle(this.containerObject.canvas, 'cursor', this._cursor);
+				this._overHeaderArea = true;
+				this._bindContextMenu();
+			}
+
 			var result = this._entryAtPoint(point); // Data related to current entry that the mouse is over now.
 
 			// If mouse was over another entry previously, we draw that again (without mouse-over effect).
 			if (this._mouseOverEntry && (!result || result.entry.index !== this._mouseOverEntry.index)) {
-				this.containerObject.setPenPosition(this);
 				this.drawHeaderEntry(this._mouseOverEntry, false, null, (this._mouseOverEntry.index === this._current));
 			}
 
@@ -571,7 +655,6 @@ L.Control.Header = L.Class.extend({
 			if (result) { // Is mouse over an entry.
 				this._mouseOverEntry = result.entry;
 				this._lastMouseOverIndex = this._mouseOverEntry.index; // used by context menu
-				this.containerObject.setPenPosition(this);
 				this.drawHeaderEntry(result.entry, true, null, result.entry.index === this._current);
 				isMouseOverResizeArea = result.hit;
 			}
@@ -588,9 +671,8 @@ L.Control.Header = L.Class.extend({
 		}
 		else { // We are in dragging mode.
 			this.containerObject.requestReDraw(); // Remove previously drawn line.
-			this.containerObject.setPenPosition(this);
-			var x = this._isColumn ? (this._dragEntry.pos + dragDistance[0]): this.size[0];
-			var y = this._isColumn ? this.size[1]: (this._dragEntry.pos + dragDistance[1]);
+			var x = this._isColumn ? (this._dragEntry.pos - this.documentTopLeft[0] + dragDistance[0]): this.size[0];
+			var y = this._isColumn ? this.size[1]: (this._dragEntry.pos - this.documentTopLeft[1] + dragDistance[1]);
 
 			this.context.lineWidth = this.dpiScale;
 			this.context.strokeStyle = 'darkblue';
@@ -599,6 +681,29 @@ L.Control.Header = L.Class.extend({
 			this.context.lineTo(this._isColumn ? x: this.containerObject.right, this._isColumn ? this.containerObject.bottom: y);
 			this.context.stroke();
 		}
+	},
+
+	_onOutlineMouseEvent: function (point, eventHandler, e) {
+		// check if the group controls area has been hit
+		if (!this._hitOutline(point))
+			return false;
+
+		var level = this._getGroupLevel(this._isColumn ? point[1]: point[0]);
+		if (level < 0 || level >= this._groups.length)
+			return true;
+
+		// when 2 collapsed group controls overlaps completely,
+		// clicking on the control should expand the lower/rightmost group
+		var groups = this._groups[level];
+		var indexes = Object.keys(groups);
+		var len = indexes.length;
+		for (var i = len - 1; i >= 0; --i) {
+			e.group = groups[indexes[i]];
+			if (eventHandler.call(this, e, point))
+				break;
+		}
+
+		return true;
 	},
 
 	_onGroupControlClick: function (e) {
@@ -615,29 +720,68 @@ L.Control.Header = L.Class.extend({
 		return false;
 	},
 
-	onDoubleClick: function () {
-		this._isColumn ? this.setOptimalWidthAuto(): this.setOptimalHeightAuto();
+	onDoubleClick: function (point) {
+		var handled = this._onOutlineMouseEvent(point, this._onGroupControlDoubleClick);
+		if (!handled)
+			this._isColumn ? this._optimalWidth(): this.setOptimalHeightAuto();
+	},
+
+	_onGroupControlDoubleClick: function (e, point) {
+		var group = e.group;
+		if (!group && !group.hidden)
+			return false;
+
+		var pos = this._headerInfo.headerToDocPos(this._isColumn ? point[1]: point[0]);
+		if (group.startPos + this._groupHeadSize < pos && pos < group.endPos) {
+			this._updateOutlineState(/*isColumnOutline: */ this._isColumn, group);
+			return true;
+		}
+		return false;
+	},
+
+	_updateOutlineState: function (column, group) {
+		if (!group)
+			return;
+
+		var type = column ? 'column' : 'row';
+		var state = group.hidden ? 'visible' : 'hidden'; // we have to send the new state
+		var payload = 'outlinestate type='+ type + ' level=' + group.level + ' index=' + group.index + ' state=' + state;
+		this._map._socket.sendMessage(payload);
 	},
 
 	onMouseDown: function (point) {
+		if (this._hitOutline(point))
+			return;
+
 		this.onMouseMove(point);
 
-		if (this._hitResizeArea) {
-			L.DomUtil.disableImageDrag();
-			L.DomUtil.disableTextSelection();
-
-			// When code is here, this._mouseOverEntry should never be null.
-
-			this._dragEntry = { // In case dragging takes place, we will remember this entry.
-				index: this._mouseOverEntry.index,
-				origsize: this._mouseOverEntry.origsize,
-				pos: this._mouseOverEntry.pos,
-				size: this._mouseOverEntry.size
-			};
-		}
-		else {
+		if (!this._hitResizeArea) {
 			this._dragEntry = null;
+			return;
 		}
+
+		L.DomUtil.disableImageDrag();
+		L.DomUtil.disableTextSelection();
+
+		// When code is here, this._mouseOverEntry should never be null.
+
+		this._dragEntry = { // In case dragging takes place, we will remember this entry.
+			index: this._mouseOverEntry.index,
+			origsize: this._mouseOverEntry.origsize,
+			pos: this._mouseOverEntry.pos,
+			size: this._mouseOverEntry.size
+		};
+	},
+
+	_onMouseMoveForDragging: function (e) {
+		this._dragging = true;
+		L.DomEvent.preventDefault(e);
+
+		this.onDragMove(this._item, this._start, this._offset, e);
+	},
+
+	_resetClickCount: function () {
+		this._clicks = 0;
 	},
 
 	onMouseUp: function () {
@@ -655,6 +799,174 @@ L.Control.Header = L.Class.extend({
 			return 0;
 		var point = new L.Point(twips, twips);
 		return Math.round(this._getParallelPos(this.converter(point)));
+	},
+
+	_setCanvasSizeImpl: function (container, canvas, property, value, isCorner) {
+		if (!value) {
+			value = parseInt(L.DomUtil.getStyle(container, property));
+		}
+		else {
+			L.DomUtil.setStyle(container, property, value + 'px');
+		}
+
+		if (property === 'width') {
+			canvas.width = Math.floor(value * this.dpiScale);
+			if (!isCorner)
+				this._canvasWidth = value * this.dpiScale;
+			// console.log('Header._setCanvasSizeImpl: _canvasWidth' + this._canvasWidth);
+		}
+		else if (property === 'height') {
+			canvas.height = Math.floor(value * this.dpiScale);
+			if (!isCorner)
+				this._canvasHeight = value * this.dpiScale;
+			// console.log('Header._setCanvasSizeImpl: _canvasHeight' + this._canvasHeight);
+		}
+	},
+
+	_setCanvasWidth: function (width) {
+		this._setCanvasSizeImpl(this._headerContainer, this._canvas, 'width', width, /*isCorner: */ false);
+	},
+
+	_setCanvasHeight: function (height) {
+		this._setCanvasSizeImpl(this._headerContainer, this._canvas, 'height', height, /*isCorner: */ false);
+	},
+
+	_setCornerCanvasWidth: function (width) {
+		this._setCanvasSizeImpl(this._cornerHeaderContainer, this._cornerCanvas, 'width', width, /*isCorner: */ true);
+	},
+
+	_setCornerCanvasHeight: function (height) {
+		this._setCanvasSizeImpl(this._cornerHeaderContainer, this._cornerCanvas, 'height', height, /*isCorner: */ true);
+	},
+
+	_hitOutline: function (point) {
+		if (point !== null)
+			return (this._isColumn ? point[1]: point[0]) <= this.getOutlineWidth();
+		else
+			return false;
+	},
+
+	_getGroupLevel: function (pos) {
+		var levels = this._groups.length;
+		var size = this._levelSpacing + this._groupHeadSize;
+
+		var level = (pos + 1) / size | 0;
+		var relPos = pos % size;
+
+		if (level <= levels && relPos > this._levelSpacing) {
+			return level;
+		}
+		else {
+			return -1;
+		}
+	},
+
+	_computeOutlineWidth: function () {
+		return this._levelSpacing + (this._groupHeadSize + this._levelSpacing) * (this._groups.length + 1);
+	},
+
+	getOutlineWidth: function () {
+		if (this._isColumn)
+			return this.size[1] - this._borderWidth - this._headerHeight;
+		else
+			return this.size[0] - this._borderWidth - this._headerWidth;
+	},
+
+	_collectGroupsData: function(groups) {
+		var level, groupEntry;
+
+		var lastGroupIndex = new Array(groups.length);
+		var firstChildGroupIndex = new Array(groups.length);
+		var lastLevel = -1;
+		for (var i = 0; i < groups.length; ++i) {
+			// a new group start
+			var groupData = groups[i];
+			level = parseInt(groupData.level) - 1;
+			if (!this._groups[level]) {
+				this._groups[level] = {};
+			}
+			var startPos = parseInt(groupData.startPos) / this._map._docLayer._tilePixelScale;
+			var endPos = parseInt(groupData.endPos) / this._map._docLayer._tilePixelScale;
+			var isHidden = !!parseInt(groupData.hidden);
+			if (isHidden || startPos === endPos) {
+				startPos -= this._groupHeadSize / 2;
+				endPos = startPos + this._groupHeadSize;
+			}
+			else {
+				var moved = false;
+				// if the first child is collapsed the parent head has to be top-aligned with the child
+				if (level < lastLevel && firstChildGroupIndex[lastLevel] !== undefined) {
+					var childGroupEntry = this._groups[lastLevel][firstChildGroupIndex[lastLevel]];
+					if (childGroupEntry.hidden) {
+						if (startPos > childGroupEntry.startPos && startPos < childGroupEntry.endPos) {
+							startPos = childGroupEntry.startPos;
+							moved = true;
+						}
+					}
+				}
+				// if 2 groups belonging to the same level are contiguous and the first group is collapsed,
+				// the second one has to be shifted as much as possible in order to avoiding overlapping.
+				if (!moved && lastGroupIndex[level] !== undefined) {
+					var prevGroupEntry = this._groups[level][lastGroupIndex[level]];
+					if (prevGroupEntry.hidden) {
+						if (startPos > prevGroupEntry.startPos && startPos < prevGroupEntry.endPos) {
+							startPos = prevGroupEntry.endPos;
+						}
+					}
+				}
+			}
+			groupEntry = {
+				level: level,
+				index: groupData.index,
+				startPos: startPos,
+				endPos: endPos,
+				hidden: isHidden
+			};
+			this._groups[level][groupData.index] = groupEntry;
+			lastGroupIndex[level] = groupData.index;
+			if (level > lastLevel) {
+				firstChildGroupIndex[level] = groupData.index;
+				lastLevel = level;
+			}
+			else if (level === lastLevel) {
+				firstChildGroupIndex[level + 1] = undefined;
+			}
+		}
+	},
+
+	drawCornerHeader: function() {
+		var ctx = this._cornerCanvasContext;
+
+		if (!this._groups)
+			return;
+
+		ctx.fillStyle = this._borderColor;
+		if (this._isColumn) {
+			var startY = this._cornerCanvas.height - (L.Control.Header.colHeaderHeight + this._borderWidth);
+			if (startY > 0)
+				ctx.fillRect(0, startY, this._cornerCanvas.width, this._borderWidth);
+		}
+		else {
+			var startX = this._cornerCanvas.width - (L.Control.Header.rowHeaderWidth + this._borderWidth);
+			if (startX > 0)
+				ctx.fillRect(startX, 0, this._borderWidth, this._cornerCanvas.height);
+		}
+
+		var levels = this._groups.length + 1;
+		for (var i = 0; i < levels; ++i) {
+			this.drawLevelHeader(i);
+		}
+	},
+
+	drawOutline: function() {
+		if (this._groups) {
+			for (var itLevel = 0; itLevel < this._groups.length; ++itLevel) {
+				for (var groupIndex in this._groups[itLevel]) {
+					if (Object.prototype.hasOwnProperty.call(this._groups[itLevel], groupIndex))
+						this.drawGroupControl(this._groups[itLevel][groupIndex]);
+				}
+			}
+		}
 	},
 
 	getHeaderZoomScale : function(lowerBound, upperBound) {
@@ -675,6 +987,7 @@ L.Control.Header = L.Class.extend({
 		this._updateCanvas();
 	},
 
+	onDragMove: function () {},
 	onDragEnd: function () {},
 	getHeaderEntryBoundingClientRect: function () {},
 	drawHeaderEntry: function () {},
@@ -683,6 +996,9 @@ L.Control.Header = L.Class.extend({
 	_getOrthogonalPos: function () {}
 
 });
+
+L.Control.Header.rowHeaderWidth = undefined;
+L.Control.Header.colHeaderHeight = undefined;
 
 L.Control.Header.HeaderInfo = L.Class.extend({
 
@@ -694,13 +1010,14 @@ L.Control.Header.HeaderInfo = L.Class.extend({
 		console.assert(this._map._docLayer.sheetGeometry, 'no sheet geometry data-structure found!');
 		var sheetGeom = this._map._docLayer.sheetGeometry;
 		this._dimGeom = this._isColumn ? sheetGeom.getColumnsGeometry() : sheetGeom.getRowsGeometry();
-		//this.update();
+		this.update();
 	},
 
-	update: function (section) {
-		var startPx = this._isColumn === true ? section.documentTopLeft[0]: section.documentTopLeft[1]; // this._isColumn ? bounds.getTopLeft().x : bounds.getTopLeft().y;
+	update: function () {
+		var bounds = this._map.getPixelBoundsCore();
+		var startPx = this._isColumn ? bounds.getTopLeft().x : bounds.getTopLeft().y;
 		this._docVisStart = startPx;
-		var endPx = startPx + (this._isColumn === true ? section.size[0]: section.size[1]);
+		var endPx = this._isColumn ? bounds.getBottomRight().x : bounds.getBottomRight().y;
 		var startIdx = this._dimGeom.getIndexFromPos(startPx, 'corepixels');
 		var endIdx = this._dimGeom.getIndexFromPos(endPx - 1, 'corepixels');
 		this._elements = [];
@@ -755,11 +1072,14 @@ L.Control.Header.HeaderInfo = L.Class.extend({
 
 		this._dimGeom.forEachInRange(startIdx + 1,
 			endIdx, function (idx, data) {
+				var startpos = data.startpos - startPx;
+				var endpos = startpos + data.size;
+				var size = endpos - startpos;
 				this._elements[idx] = {
 					index: idx,
-					pos: data.startpos - startPx + data.size, // end position on the header canvas
-					size: data.size,
-					origsize: data.size,
+					pos: endpos, // end position on the header canvas
+					size: size,
+					origsize: size,
 				};
 			}.bind(this));
 

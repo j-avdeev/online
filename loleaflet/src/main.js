@@ -67,6 +67,8 @@ var map = L.map('map', {
 	outOfFocusTimeoutSecs: outOfFocusTimeoutSecs, // Dim after switching tabs.
 });
 
+document.getElementById('map').style.backgroundColor = 'transparent'; // Main canvas is under map div. Transparent background makes it visible.
+
 ////// Controls /////
 
 map.uiManager = L.control.uiManager();

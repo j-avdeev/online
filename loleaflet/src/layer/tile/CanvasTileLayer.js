@@ -42,13 +42,12 @@ L.TileSectionManager = L.Class.extend({
 		this._layer = layer;
 		this._canvas = this._layer._canvas;
 		this._map = this._layer._map;
-		var mapSize = this._map.getPixelBoundsCore().getSize();
 		this._offscreenCanvases = [];
 		this._oscCtxs = [];
 		this._tilesSection = null; // Shortcut.
 
 		this._sectionContainer = new CanvasSectionContainer(this._canvas);
-		this._sectionContainer.onResize(mapSize.x, mapSize.y);
+		this._sectionContainer.onResize();
 
 		var dpiScale = L.getDpiScaleFactor(true /* useExactDPR */);
 		this._dpiScale = dpiScale;
@@ -202,6 +201,8 @@ L.TileSectionManager = L.Class.extend({
 		if (!ctx)
 			ctx = this._paintContext();
 
+		this._sectionContainer.setPenPosition(this._tilesSection);
+
 		if (ctx.paneBoundsActive === true)
 			this._paintWithPanes(tile, ctx);
 		else
@@ -210,16 +211,16 @@ L.TileSectionManager = L.Class.extend({
 
 	_addTilesSection: function () {
 		var that = this;
-		this._sectionContainer.addSection({
+		this._sectionContainer.createSection({
 			name: 'tiles',
 			anchor: 'top left',
 			position: [250 * that._dpiScale, 250 * that._dpiScale], // Set its initial position to somewhere blank. Other sections shouldn't cover this point after initializing.
 			size: [0, 0], // Going to be expanded, no initial width or height is necessary.
 			expand: 'top left bottom right', // Expand to all directions.
-			processingOrder: 1,
+			processingOrder: 5,
 			drawingOrder: 5,
 			zIndex: 5,
-			interactable: true,
+			interactable: false,
 			sectionProperties: {
 				docLayer: that._layer,
 				tsManager: that
@@ -233,13 +234,13 @@ L.TileSectionManager = L.Class.extend({
 
 	_addGridSection: function () {
 		var that = this;
-		this._sectionContainer.addSection({
+		this._sectionContainer.createSection({
 			name: 'calc grid',
 			anchor: 'top left',
 			position: [0, 0],
 			size: [0, 0],
 			expand: '',
-			processingOrder: 2, // Size and position will be copied, this value is not important.
+			processingOrder: 5, // Size and position will be copied, this value is not important.
 			drawingOrder: 4,
 			zIndex: 5,
 			// Even if this one is drawn on top, won't be able to catch events.
@@ -302,13 +303,13 @@ L.TileSectionManager = L.Class.extend({
 	// This section is added when debug is enabled. Splits are enabled for only Calc for now.
 	_addSplitsSection: function () {
 		var that = this;
-		this._sectionContainer.addSection({
+		this._sectionContainer.createSection({
 			name: 'splits',
 			anchor: 'top left',
 			position: [0, 0],
 			size: [0, 0],
 			expand: '',
-			processingOrder: 3, // Size and position will be copied, this value is not important.
+			processingOrder: 5, // Size and position will be copied, this value is not important.
 			drawingOrder: 8, // Above tiles section (same zIndex, higher drawing order).
 			zIndex: 5,
 			// Even if this one is drawn on top, won't be able to catch events.
@@ -324,13 +325,13 @@ L.TileSectionManager = L.Class.extend({
 	// This section is added when debug is enabled.
 	_addTilePixelGridSection: function () {
 		var that = this;
-		this._sectionContainer.addSection({
+		this._sectionContainer.createSection({
 			name: 'tile pixel grid',
 			anchor: 'top left',
 			position: [0, 0],
 			size: [0, 0],
 			expand: '',
-			processingOrder: 4, // Size and position will be copied, this value is not important.
+			processingOrder: 5, // Size and position will be copied, this value is not important.
 			drawingOrder: 6,
 			zIndex: 5,
 			interactable: false,
@@ -531,9 +532,9 @@ L.CanvasTileLayer = L.TileLayer.extend({
 
 		L.TileLayer.prototype._initContainer.call(this);
 
-		var mapContainer = this._map.getContainer();
+		var documentContainer = document.getElementById('document-container');
 		var canvasContainerClass = 'leaflet-canvas-container';
-		this._canvasContainer = L.DomUtil.create('div', canvasContainerClass, mapContainer);
+		this._canvasContainer = L.DomUtil.create('div', canvasContainerClass, documentContainer);
 		this._setup();
 	},
 
@@ -544,6 +545,7 @@ L.CanvasTileLayer = L.TileLayer.extend({
 		}
 
 		this._canvas = L.DomUtil.create('canvas', '', this._canvasContainer);
+		this._canvas.id = 'document-canvas'; // First need appeared because of the context menus.
 		this._container.style.position = 'absolute';
 		this._painter = new L.TileSectionManager(this);
 		this._painter._addTilesSection();
@@ -572,6 +574,7 @@ L.CanvasTileLayer = L.TileLayer.extend({
 		if (this._docType === 'spreadsheet') {
 			this._painter._addGridSection();
 		}
+		this._syncTileContainerSize();
 	},
 
 	_syncTilePanePos: function () {
@@ -587,10 +590,9 @@ L.CanvasTileLayer = L.TileLayer.extend({
 	_syncTileContainerSize: function () {
 		var tileContainer = this._container;
 		if (tileContainer) {
-			var size = this._map.getPixelBounds().getSize();
-			this._painter._sectionContainer.onResize(size.x, size.y);
 			tileContainer.style.width = this._painter._sectionContainer.canvas.style.width;
 			tileContainer.style.height = this._painter._sectionContainer.canvas.style.height;
+			this._painter._sectionContainer.onResize();
 		}
 	},
 

@@ -1001,6 +1001,8 @@ input.clipboard {
 	left: 0;
 	top: 0;
 	z-index: 9;
+	right: 0;
+	bottom: 0;
 }
 
 .leaflet-pane-splitter {
