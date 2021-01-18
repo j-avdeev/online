@@ -238,26 +238,34 @@ L.Control.NotebookbarBuilder = L.Control.JSDialogBuilder.extend({
 		}
 	},
 
+	_createiOsFontButton: function(parentContainer, data, builder) {
+		var table = L.DomUtil.createWithId('div', 'table-fontnamecombobox', parentContainer);
+		var row = L.DomUtil.create('div', 'notebookbar row', table);
+		var button = L.DomUtil.createWithId('button', data.id, row);
+		if (data.selectedEntries.length && data.entries[data.selectedEntries[0]])
+			button.innerText = data.entries[data.selectedEntries[0]];
+		else if (window.LastSetiOSFontNameButtonFont)
+			button.innerText = window.LastSetiOSFontNameButtonFont;
+		else if (data.text)
+			button.innerText = data.text;
+		var map = builder.map;
+		window.MagicFontNameCallback = function(font) {
+			button.innerText = font;
+			map.applyFont(font);
+			map.focus();
+		};
+		button.onclick = function() {
+
+			// There doesn't seem to be a way to pre-select an entry in the
+			// UIFontPickerViewController so no need to pass the
+			// current font here.
+			window.postMobileMessage('FONTPICKER');
+		};
+	},
+
 	_comboboxControl: function(parentContainer, data, builder) {
 		if (window.ThisIsTheiOSApp && data.id === 'fontnamecombobox') {
-			var button = L.DomUtil.createWithId('button', data.id, parentContainer);
-			if (data.selectedEntries.length && data.entries[data.selectedEntries[0]])
-				button.innerHTML = data.entries[data.selectedEntries[0]];
-			else if (window.LastSetiOSFontNameButtonFont)
-				button.innerHTML = window.LastSetiOSFontNameButtonFont;
-			var map = builder.map;
-			window.MagicFontNameCallback = function(font) {
-				button.innerHTML = font;
-				map.applyFont(font);
-				map.focus();
-			};
-			button.onclick = function() {
-
-				// There doesn't seem to be a way to pre-select an entry in the
-				// UIFontPickerViewController so no need to pass the
-				// current font here.
-				window.postMobileMessage('FONTPICKER');
-			};
+			this._createiOsFontButton(parentContainer, data, builder);
 			return false;
 		}
 
